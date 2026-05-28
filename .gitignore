@@ -14,3 +14,5 @@ wheels/
 uploads/
 *.sqlite3
 .env
+
+.idea/
