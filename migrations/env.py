@@ -8,7 +8,7 @@ from sqlmodel import SQLModel
 
 from alembic import context
 
-from src.auth.models import User
+from src.auth.models import User, VerificationCode
 from src.dress.models import Dress
 from src.event.models import Event
 from src.media.models import Media

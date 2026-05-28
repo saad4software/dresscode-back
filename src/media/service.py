@@ -8,6 +8,9 @@ from PIL import Image, UnidentifiedImageError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+import io
+from PIL import Image
+
 from src.auth.models import User
 from src.core.config import config
 from src.core.models import IPageResponse
@@ -42,12 +45,41 @@ class MediaService:
             )
 
         content = await file.read()
-        if len(content) == 0:
+
+
+        try:
+            # Load bytes into PIL
+            with Image.open(io.BytesIO(content)) as img:
+                # 1. Enforce a Max Dimension (e.g., 1024px) to save AI tokens
+                MAX_DIM = 1024
+                if img.width > MAX_DIM or img.height > MAX_DIM:
+                    img.thumbnail((MAX_DIM, MAX_DIM), Image.Resampling.LANCZOS)
+                
+                # 2. Compress and save to a buffer
+                buffer = io.BytesIO()
+                # We can force save everything as JPEG or WebP, or respect the original format
+                # Let's save as JPEG with 85% quality (excellent quality-to-size ratio)
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB") # Drop alpha channel if converting to JPEG
+                
+                img.save(buffer, format="JPEG", quality=85)
+                optimized_content = buffer.getvalue()
+                
+                width, height = img.width, img.height
+        except Exception as exc:
+            logger.error("Failed to process/optimize image: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or corrupt image file.",
+            )
+
+
+        if len(optimized_content) == 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Uploaded file is empty",
             )
-        if len(content) > config.max_upload_bytes:
+        if len(optimized_content) > config.max_upload_bytes:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail=f"File exceeds {config.max_upload_bytes} bytes",
@@ -61,13 +93,14 @@ class MediaService:
                     detail="Dress not found",
                 )
 
-        ext = _EXT_BY_MIME[file.content_type]
+        # ext = _EXT_BY_MIME[file.content_type]
+        ext = ".jpg"
         user_dir = config.upload_dir / str(user.id)
         user_dir.mkdir(parents=True, exist_ok=True)
         filename = f"{uuid.uuid4().hex}{ext}"
         path = user_dir / filename
 
-        path.write_bytes(content)
+        path.write_bytes(optimized_content)
 
         width, height = _read_dimensions(path)
 
@@ -76,8 +109,8 @@ class MediaService:
             dress_id=dress_id,
             storage_path=str(path),
             original_filename=file.filename or filename,
-            mime_type=file.content_type,
-            size_bytes=len(content),
+            mime_type="image/jpeg",
+            size_bytes=len(optimized_content),
             width=width,
             height=height,
             processing_status=ProcessingStatus.pending,

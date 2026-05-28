@@ -51,6 +51,19 @@ async def analyze_image(
     if not text:
         raise ValueError("Empty response from model")
 
+    text = text.strip()
+    if text.startswith("```"):
+        # Remove opening fence (e.g., ```json or ```)
+        text = text.lstrip("`")
+        if text.lower().startswith("json"):
+            text = text[4:]
+        text = text.strip()
+
+        # Remove closing fence (```)
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+
     try:
         return DressVisionMultiResult.model_validate_json(text)
     except ValueError as exc:

@@ -76,6 +76,16 @@ Optional variables:
 | `JWT_ALGORITHM` | `HS256` | JWT signing algorithm |
 | `JWT_ACCESS_EXP_MINUTES` | `30` | Access token lifetime |
 | `JWT_REFRESH_EXP_DAYS` | `7` | Refresh token lifetime |
+| `EMAIL_VERIFICATION_REQUIRED` | `true` | Require users to verify their email-formatted username before login |
+| `EMAIL_VERIFICATION_CODE_EXP_MINUTES` | `15` | Verification code lifetime |
+| `EMAIL_VERIFICATION_CODE_LENGTH` | `6` | Number of digits in verification codes |
+| `SMTP_HOST` | unset | SMTP server for verification emails; when unset, codes are logged for local development |
+| `SMTP_PORT` | `587` | SMTP server port |
+| `SMTP_USERNAME` | unset | SMTP username |
+| `SMTP_PASSWORD` | unset | SMTP password |
+| `SMTP_FROM_EMAIL` | `SMTP_USERNAME` or `no-reply@dresscode.local` | Sender address for verification emails |
+| `SMTP_USE_TLS` | `true` | Use STARTTLS; set `false` for SMTP over SSL |
+| `SMTP_TIMEOUT_SECONDS` | `10` | SMTP network timeout |
 | `UPLOAD_DIR` | `uploads` | Directory for stored images |
 | `MAX_UPLOAD_BYTES` | `10485760` | Max upload size (10 MB) |
 | `GEMMA_MODEL_ID` | `gemma-4-26b-a4b-it` | Vision / outfit model id |
@@ -98,7 +108,10 @@ uv run uvicorn main:app --reload
 The API listens on `http://127.0.0.1:8000` by default.
 
 - Interactive docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-- Swagger OAuth login (for trying protected routes in docs): `POST /auth/login_swagger` with username/password
+- Register: `POST /auth/register` with email-formatted username and password. A verification code is emailed when verification is enabled.
+- Verify email: `POST /auth/verify-email` with username and code.
+- Resend verification code: `POST /auth/resend-verification-code` with username and password.
+- Swagger OAuth login (for trying protected routes in docs): `POST /auth/login_swagger` with username/password after email verification.
 
 ## API overview
 
