@@ -9,6 +9,7 @@ from sqlmodel import select
 
 from src.ai.client import analyze_image
 from src.ai.schemas import DressVisionResult
+from src.admin.models import DressCategory
 from src.dress.models import Dress
 from src.media.models import Media, ProcessingStatus
 
@@ -74,7 +75,7 @@ class AIService:
                 continue
 
             if not first_success_applied:
-                self._apply_base_fields(dress, vision)
+                await self._apply_base_fields(dress, vision)
                 vision.apply_ai_metadata(dress)
                 first_success_applied = True
             self._merge_additional(dress, vision)
@@ -95,14 +96,21 @@ class AIService:
     def _has_ai_data(dress: Dress) -> bool:
         return dress.ai_processed_at is not None
 
-    @staticmethod
-    def _apply_base_fields(dress: Dress, vision: DressVisionResult) -> None:
+    async def _apply_base_fields(self, dress: Dress, vision: DressVisionResult) -> None:
         if not dress.item_name:
             dress.item_name = vision.item_name
-        dress.category = vision.category
+
+        # Resolve category_id by querying the DressCategory model:
+        stmt = select(DressCategory).where(DressCategory.slug == vision.category.value)
+        res = await self.session.execute(stmt)
+        cat = res.scalar_one_or_none()
+        if cat:
+            dress.category_id = cat.id
+
         dress.dominant_color = vision.dominant_color
         dress.warmth_level = vision.warmth_level
         dress.layering = vision.layering
+
         dress.description = vision.description
         dress.season_suitability = list(vision.season_suitability)
         dress.style = list(vision.style)

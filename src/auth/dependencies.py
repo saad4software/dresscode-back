@@ -27,3 +27,20 @@ async def get_current_user(
 
 
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
+
+
+async def get_current_admin_user(
+    current_user: CurrentUserDep,
+) -> User:
+    from fastapi import HTTPException, status
+    from src.auth.models import UserRole
+    if current_user.role != UserRole.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin users are allowed to access this resource",
+        )
+    return current_user
+
+
+CurrentAdminUserDep = Annotated[User, Depends(get_current_admin_user)]
+

@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Query, status
+from sqlmodel import select
 
 from src.ai.dependencies import OutfitServiceDep
 from src.auth.dependencies import CurrentUserDep
+from src.core.dependencies import SessionDep
 from src.core.models import IPageResponse
 from src.dress.dependencies import DressServiceDep
-from src.event.cities import CITY_COORDINATES, GermanCity
+from src.admin.models import City
 from src.event.dependencies import EventServiceDep
 from src.event.models import (
     CityOption,
@@ -17,11 +19,15 @@ router = APIRouter(prefix="/events", tags=["events"])
 
 
 @router.get("/cities", response_model=list[CityOption])
-async def list_cities() -> list[CityOption]:
+async def list_cities(session: SessionDep) -> list[CityOption]:
+    stmt = select(City).order_by(City.display_name)
+    res = await session.execute(stmt)
+    cities = res.scalars().all()
     return [
-        CityOption(slug=slug, display_name=meta[0])
-        for slug, meta in CITY_COORDINATES.items()
+        CityOption(slug=c.slug, display_name=c.display_name)
+        for c in cities
     ]
+
 
 
 @router.post("", response_model=EventRead, status_code=status.HTTP_201_CREATED)
@@ -76,13 +82,14 @@ async def update_event(
     return EventRead.model_validate(event, from_attributes=True)
 
 
-@router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{event_id}", response_model=EventRead)
 async def delete_event(
     event_id: int,
     service: EventServiceDep,
     current_user: CurrentUserDep,
-) -> None:
-    await service.delete(current_user, event_id)
+) -> EventRead:
+    event = await service.delete(current_user, event_id)
+    return EventRead.model_validate(event, from_attributes=True)
 
 
 @router.post("/{event_id}/suggest-outfits")

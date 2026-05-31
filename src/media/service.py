@@ -207,7 +207,7 @@ class MediaService:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none() is not None
 
-    async def delete(self, user: User, media_id: int) -> None:
+    async def delete(self, user: User, media_id: int) -> Media:
         media = await self.get_for_user(user, media_id)
         path = Path(media.storage_path)
         still_used = await self._storage_path_in_use(
@@ -215,12 +215,14 @@ class MediaService:
         )
         await self.session.delete(media)
         await self.session.commit()
-        if still_used:
-            return
-        try:
-            path.unlink(missing_ok=True)
-        except OSError as exc:
-            logger.warning("Failed to delete file %s: %s", path, exc)
+
+        if not still_used:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as exc:
+                logger.warning("Failed to delete file %s: %s", path, exc)
+
+        return media
 
 
 def _read_dimensions(path: Path) -> tuple[Optional[int], Optional[int]]:

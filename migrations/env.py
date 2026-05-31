@@ -12,6 +12,8 @@ from src.auth.models import User, VerificationCode
 from src.dress.models import Dress
 from src.event.models import Event
 from src.media.models import Media
+from src.admin.models import City, EventType, DressCategory
+
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

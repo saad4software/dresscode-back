@@ -16,7 +16,6 @@ from src.ai.tools import AVAILABLE_TOOLS, TOOL_DECLARATIONS
 from src.auth.models import User
 from src.dress.models import DressRead
 from src.dress.service import DressService
-from src.event.cities import city_display_name
 from src.event.models import Event
 from src.event.season import season_for_date
 from src.event.service import EventService
@@ -53,11 +52,11 @@ class OutfitSuggestionService:
         dresses_by_id = {d.id: d for d in dresses}
 
         event_payload = {
-            "event_type": event.event_type.value,
+            "event_type": event.event_type,
             "event_date": event.event_date.isoformat(),
             "start_time": event.start_time.isoformat() if event.start_time else None,
             "end_time": event.end_time.isoformat() if event.end_time else None,
-            "city": city_display_name(event.city),
+            "city": event.city_obj.display_name if event.city_obj else event.city,
             "season": season.value,
             "title": event.title,
             "notes": event.notes,
@@ -130,7 +129,7 @@ class OutfitSuggestionService:
                     "pieces": [
                         {
                             "dress_id": piece.dress_id,
-                            "category": piece.category.value,
+                            "category": piece.category,
                             "role": piece.role,
                             "dress": DressRead.model_validate(
                                 dresses_by_id[piece.dress_id],

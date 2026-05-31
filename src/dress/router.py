@@ -7,7 +7,6 @@ from src.auth.dependencies import CurrentUserDep
 from src.core.models import IPageResponse
 from src.dress.dependencies import DressServiceDep
 from src.dress.models import (
-    Category,
     DressAnalyzeResponse,
     DressCreate,
     DressCreateFromImageResponse,
@@ -15,6 +14,7 @@ from src.dress.models import (
     DressUpdate,
     LinkMediaRequest,
 )
+
 from src.media.dependencies import MediaServiceDep
 from src.media.models import MediaRead
 
@@ -59,9 +59,10 @@ async def list_dresses(
     current_user: CurrentUserDep,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
-    category: Optional[Category] = Query(default=None),
+    category: Optional[str] = Query(default=None),
     archived: bool = Query(default=False),
 ) -> IPageResponse[list[DressRead]]:
+
     result = await service.list_for_user(
         current_user,
         page=page,
@@ -101,13 +102,15 @@ async def update_dress(
     return DressRead.model_validate(dress, from_attributes=True)
 
 
-@router.delete("/{dress_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{dress_id}", response_model=DressRead)
 async def delete_dress(
     dress_id: int,
+    media_service: MediaServiceDep,
     service: DressServiceDep,
     current_user: CurrentUserDep,
-) -> None:
-    await service.delete(current_user, dress_id)
+) -> DressRead:
+    dress = await service.delete(current_user, dress_id, media_service)
+    return DressRead.model_validate(dress, from_attributes=True)
 
 
 @router.get("/{dress_id}/media", response_model=IPageResponse[list[MediaRead]])

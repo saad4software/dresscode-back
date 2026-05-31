@@ -140,7 +140,7 @@ class DressCatalogItem(BaseModel):
 
     id: int
     item_name: Optional[str] = None
-    category: Optional[Category] = None
+    category: Optional[str] = None
     colors: list[str] = Field(default_factory=list)
     dominant_color: Optional[str] = None
     warmth_level: Optional[WarmthLevel] = None
@@ -179,13 +179,14 @@ class DressCatalogItem(BaseModel):
 
 class OutfitPiece(BaseModel):
     dress_id: int = Field(description="ID from the provided wardrobe catalog")
-    category: Category = Field(description="Category of the wardrobe piece")
+    category: str = Field(description="Category of the wardrobe piece")
     role: str = Field(
         description=(
             "Role in the outfit, e.g. 'top', 'bottom', 'outerwear', "
             "'shoes', 'accessory'"
         )
     )
+
 
 
 class OutfitSuggestion(BaseModel):

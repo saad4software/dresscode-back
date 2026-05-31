@@ -89,13 +89,14 @@ async def update_media(
     return MediaRead.model_validate(media, from_attributes=True)
 
 
-@router.delete("/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{media_id}", response_model=MediaRead)
 async def delete_media(
     media_id: int,
     service: MediaServiceDep,
     current_user: CurrentUserDep,
-) -> None:
-    await service.delete(current_user, media_id)
+) -> MediaRead:
+    media = await service.delete(current_user, media_id)
+    return MediaRead.model_validate(media, from_attributes=True)
 
 
 @router.get("/{media_id}/file")

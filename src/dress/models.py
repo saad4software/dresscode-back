@@ -4,7 +4,9 @@ from typing import Optional
 
 from pydantic import field_validator
 from sqlalchemy import JSON, Column
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, SQLModel, Relationship
+
+from src.admin.models import DressCategory
 
 
 class Category(str, Enum):
@@ -71,7 +73,6 @@ class DressStatus(str, Enum):
 
 class DressBase(SQLModel):
     item_name: Optional[str] = Field(default=None, max_length=255)
-    category: Optional[Category] = None
     dominant_color: Optional[str] = Field(default=None, max_length=7)
     warmth_level: Optional[WarmthLevel] = None
     description: Optional[str] = None
@@ -91,6 +92,10 @@ class Dress(DressBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id", index=True)
 
+    category_id: Optional[int] = Field(
+        default=None, foreign_key="dress_category.id", index=True, nullable=True
+    )
+
     colors: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     season_suitability: list[Season] = Field(
         default_factory=list, sa_column=Column(JSON)
@@ -105,6 +110,13 @@ class Dress(DressBase, table=True):
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    category_obj: Optional[DressCategory] = Relationship()
+
+    @property
+    def category(self) -> Optional[str]:
+        return self.category_obj.slug if self.category_obj else None
 
 
 def _validate_hex(value: Optional[str]) -> Optional[str]:
@@ -122,7 +134,7 @@ def _validate_hex(value: Optional[str]) -> Optional[str]:
 
 class DressCreate(SQLModel):
     item_name: Optional[str] = None
-    category: Optional[Category] = None
+    category: Optional[str] = None
     colors: list[str] = Field(default_factory=list)
     dominant_color: Optional[str] = None
     warmth_level: Optional[WarmthLevel] = None
@@ -151,7 +163,7 @@ class DressCreate(SQLModel):
 
 class DressUpdate(SQLModel):
     item_name: Optional[str] = None
-    category: Optional[Category] = None
+    category: Optional[str] = None
     colors: Optional[list[str]] = None
     dominant_color: Optional[str] = None
     warmth_level: Optional[WarmthLevel] = None
@@ -186,7 +198,8 @@ class DressRead(SQLModel):
     id: int
     user_id: int
     item_name: Optional[str]
-    category: Optional[Category]
+    category: Optional[str]
+    category_id: Optional[int] = None
     colors: list[str]
     dominant_color: Optional[str]
     warmth_level: Optional[WarmthLevel]
@@ -223,3 +236,4 @@ class DressAnalyzeResponse(SQLModel):
 class DressCreateFromImageResponse(SQLModel):
     dresses: list[DressRead]
     media_id: int
+

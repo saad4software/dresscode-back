@@ -5,14 +5,15 @@ from typing import Optional, Sequence
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
 from src.ai.client import analyze_image
+from src.admin.models import DressCategory
 from src.auth.models import User
 from src.core.models import IPageResponse
 from src.core.pagination import paginate
 from src.dress.models import (
-    Category,
     Dress,
     DressCreate,
     DressStatus,
@@ -30,13 +31,35 @@ class DressService:
         self.session = session
 
     async def create(self, user: User, data: DressCreate) -> Dress:
+        category_id = None
+        if data.category:
+            stmt = select(DressCategory).where(DressCategory.slug == data.category)
+            res = await self.session.execute(stmt)
+            cat = res.scalar_one_or_none()
+            if not cat:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Category '{data.category}' not found",
+                )
+            category_id = cat.id
+
+        fields = data.model_dump(exclude_unset=False)
+        fields.pop("category", None)
+
         dress = Dress(
             user_id=user.id,
-            **data.model_dump(exclude_unset=False),
+            category_id=category_id,
+            **fields,
         )
         self.session.add(dress)
         await self.session.commit()
-        await self.session.refresh(dress)
+
+        # Eagerly load relationship
+        stmt = select(Dress).where(Dress.id == dress.id).options(
+            selectinload(Dress.category_obj)
+        )
+        res = await self.session.execute(stmt)
+        dress = res.scalar_one()
         return dress
 
     async def create_from_image(
@@ -72,7 +95,18 @@ class DressService:
 
         for index, vision in enumerate(vision_multi.items):
             data = vision.to_dress_create()
-            dress = Dress(user_id=user.id, **data.model_dump())
+            category_id = None
+            if data.category:
+                stmt = select(DressCategory).where(DressCategory.slug == data.category)
+                res = await self.session.execute(stmt)
+                cat = res.scalar_one_or_none()
+                if cat:
+                    category_id = cat.id
+
+            fields = data.model_dump()
+            fields.pop("category", None)
+
+            dress = Dress(user_id=user.id, category_id=category_id, **fields)
             vision.apply_ai_metadata(dress)
             dress.updated_at = dress.ai_processed_at or datetime.now(timezone.utc)
             self.session.add(dress)
@@ -89,12 +123,22 @@ class DressService:
             dresses.append(dress)
 
         await self.session.commit()
-        for dress in dresses:
-            await self.session.refresh(dress)
-        return dresses, media_id
+        # Eagerly load categories for returned dresses
+        dresses_loaded = []
+        for d in dresses:
+            stmt = select(Dress).where(Dress.id == d.id).options(
+                selectinload(Dress.category_obj)
+            )
+            res = await self.session.execute(stmt)
+            dresses_loaded.append(res.scalar_one())
+        return dresses_loaded, media_id
 
     async def get_for_user(self, user: User, dress_id: int) -> Dress:
-        dress = await self.session.get(Dress, dress_id)
+        stmt = select(Dress).where(Dress.id == dress_id).options(
+            selectinload(Dress.category_obj)
+        )
+        res = await self.session.execute(stmt)
+        dress = res.scalar_one_or_none()
         if dress is None or dress.user_id != user.id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -107,14 +151,14 @@ class DressService:
         user: User,
         page: int = 1,
         page_size: int = 20,
-        category: Optional[Category] = None,
+        category: Optional[str] = None,
         archived: bool = False,
     ) -> IPageResponse[list[Dress]]:
-        stmt = select(Dress).where(Dress.user_id == user.id)
+        stmt = select(Dress).options(selectinload(Dress.category_obj)).where(Dress.user_id == user.id)
         if not archived:
             stmt = stmt.where(Dress.is_archived == False)  # noqa: E712
         if category is not None:
-            stmt = stmt.where(Dress.category == category)
+            stmt = stmt.join(Dress.category_obj).where(DressCategory.slug == category)
         stmt = stmt.order_by(Dress.created_at.desc())
         return await paginate(self.session, stmt, page, page_size)
 
@@ -123,25 +167,55 @@ class DressService:
     ) -> Dress:
         dress = await self.get_for_user(user, dress_id)
         updates = data.model_dump(exclude_unset=True)
+
+        if "category" in updates:
+            category_slug = updates.pop("category")
+            if category_slug is None:
+                dress.category_id = None
+            else:
+                stmt = select(DressCategory).where(DressCategory.slug == category_slug)
+                res = await self.session.execute(stmt)
+                cat = res.scalar_one_or_none()
+                if not cat:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Category '{category_slug}' not found",
+                    )
+                dress.category_id = cat.id
+
         for field, value in updates.items():
             setattr(dress, field, value)
         dress.updated_at = datetime.now(timezone.utc)
         self.session.add(dress)
         await self.session.commit()
-        await self.session.refresh(dress)
+
+        # Eagerly load relationship
+        stmt = select(Dress).where(Dress.id == dress.id).options(
+            selectinload(Dress.category_obj)
+        )
+        res = await self.session.execute(stmt)
+        dress = res.scalar_one()
         return dress
 
-    async def delete(self, user: User, dress_id: int) -> None:
+    async def delete(
+            self,
+            user: User,
+            dress_id: int,
+            media_service: MediaService,
+    ) -> Dress:
         dress = await self.get_for_user(user, dress_id)
-        # Unlink media so wardrobe photos remain in the library.
+
         result = await self.session.execute(
             select(Media).where(Media.dress_id == dress.id)
         )
+
+        # delete media items for deleted dresses
         for media in result.scalars().all():
-            media.dress_id = None
-            self.session.add(media)
+            _ = await media_service.delete(user=user, media_id=media.id)
+
         await self.session.delete(dress)
         await self.session.commit()
+        return dress
 
     async def list_media(
         self,
@@ -204,6 +278,7 @@ class DressService:
         """
         stmt = (
             select(Dress)
+            .options(selectinload(Dress.category_obj))
             .where(Dress.user_id == user.id)
             .where(Dress.is_archived == False)  # noqa: E712
             .where(Dress.status == DressStatus.ready)
@@ -226,3 +301,4 @@ class DressService:
         dress.updated_at = datetime.now(timezone.utc)
         self.session.add(dress)
         await self.session.commit()
+
