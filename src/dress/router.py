@@ -2,19 +2,19 @@ from typing import Optional
 
 from fastapi import APIRouter, File, Query, UploadFile, status
 
-from src.ai.dependencies import AIServiceDep
 from src.auth.dependencies import CurrentUserDep
 from src.core.models import IPageResponse
 from src.dress.dependencies import DressServiceDep
 from src.dress.models import (
-    DressAnalyzeResponse,
     DressCreate,
-    DressCreateFromImageResponse,
     DressRead,
     DressUpdate,
     LinkMediaRequest,
 )
-
+from src.jobs.dependencies import JobServiceDep
+from src.jobs.enqueue import enqueue_job
+from src.jobs.models import JobRead, JobType
+from src.jobs.service import job_to_read
 from src.media.dependencies import MediaServiceDep
 from src.media.models import MediaRead
 
@@ -33,24 +33,24 @@ async def create_dress(
 
 @router.post(
     "/from-image",
-    response_model=DressCreateFromImageResponse,
-    status_code=status.HTTP_201_CREATED,
+    response_model=JobRead,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def create_dress_from_image(
-    service: DressServiceDep,
     media_service: MediaServiceDep,
+    job_service: JobServiceDep,
     current_user: CurrentUserDep,
     file: UploadFile = File(...),
-) -> DressCreateFromImageResponse:
-    dresses, media_id = await service.create_from_image(
-        current_user, file, media_service
+) -> JobRead:
+    media = await media_service.upload(current_user, file)
+    job = await job_service.create(
+        current_user,
+        JobType.dress_from_image,
+        {"media_id": media.id},
     )
-    return DressCreateFromImageResponse(
-        dresses=[
-            DressRead.model_validate(d, from_attributes=True) for d in dresses
-        ],
-        media_id=media_id,
-    )
+    celery_task_id = enqueue_job(job)
+    job = await job_service.set_celery_task_id(job, celery_task_id)
+    return job_to_read(job)
 
 
 @router.get("", response_model=IPageResponse[list[DressRead]])
@@ -146,18 +146,23 @@ async def link_dress_media(
     return [MediaRead.model_validate(m, from_attributes=True) for m in items]
 
 
-@router.post("/{dress_id}/analyze", response_model=DressAnalyzeResponse)
+@router.post(
+    "/{dress_id}/analyze",
+    response_model=JobRead,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def analyze_dress(
     dress_id: int,
     dress_service: DressServiceDep,
-    ai_service: AIServiceDep,
+    job_service: JobServiceDep,
     current_user: CurrentUserDep,
-) -> DressAnalyzeResponse:
-    dress = await dress_service.get_for_user(current_user, dress_id)
-    result = await ai_service.analyze_dress(dress)
-    refreshed = await dress_service.get_for_user(current_user, dress_id)
-    return DressAnalyzeResponse(
-        dress=DressRead.model_validate(refreshed, from_attributes=True),
-        analyzed_media_ids=result.analyzed_media_ids,
-        failed_media_ids=result.failed_media_ids,
+) -> JobRead:
+    await dress_service.get_for_user(current_user, dress_id)
+    job = await job_service.create(
+        current_user,
+        JobType.dress_analyze,
+        {"dress_id": dress_id},
     )
+    celery_task_id = enqueue_job(job)
+    job = await job_service.set_celery_task_id(job, celery_task_id)
+    return job_to_read(job)

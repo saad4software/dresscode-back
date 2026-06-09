@@ -1,18 +1,27 @@
 from fastapi import APIRouter, Query, status
 from sqlmodel import select
 
-from src.ai.dependencies import OutfitServiceDep
 from src.auth.dependencies import CurrentUserDep
 from src.core.dependencies import SessionDep
 from src.core.models import IPageResponse
-from src.dress.dependencies import DressServiceDep
 from src.admin.models import City
 from src.event.dependencies import EventServiceDep
 from src.event.models import (
     CityOption,
     EventCreate,
+    EventDetailRead,
     EventRead,
     EventUpdate,
+)
+from src.outfit.dependencies import OutfitServiceDep
+from src.outfit.service import outfit_to_read
+from src.jobs.dependencies import JobServiceDep
+from src.jobs.enqueue import enqueue_job
+from src.jobs.models import JobRead, JobType
+from src.jobs.service import job_to_read
+from src.admin.models import (
+    EventTypeRead,
+    EventType,
 )
 
 router = APIRouter(prefix="/events", tags=["events"])
@@ -30,6 +39,16 @@ async def list_cities(session: SessionDep) -> list[CityOption]:
 
 
 
+@router.get("/event-types", response_model=list[EventTypeRead])
+async def list_event_types(
+    session: SessionDep,
+) -> list[EventTypeRead]:
+    stmt = select(EventType).order_by(EventType.display_name)
+    res = await session.execute(stmt)
+    ets = res.scalars().all()
+    return [EventTypeRead.model_validate(et) for et in ets]
+
+
 @router.post("", response_model=EventRead, status_code=status.HTTP_201_CREATED)
 async def create_event(
     data: EventCreate,
@@ -37,12 +56,13 @@ async def create_event(
     current_user: CurrentUserDep,
 ) -> EventRead:
     event = await service.create(current_user, data)
-    return EventRead.model_validate(event, from_attributes=True)
+    return EventRead.from_event(event)
 
 
 @router.get("", response_model=IPageResponse[list[EventRead]])
 async def list_events(
     service: EventServiceDep,
+    outfit_service: OutfitServiceDep,
     current_user: CurrentUserDep,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
@@ -50,25 +70,38 @@ async def list_events(
     result = await service.list_for_user(
         current_user, page=page, page_size=page_size
     )
+    events = result.results or []
+    event_ids = [event.id for event in events]
+    with_suggestions = await outfit_service.event_ids_with_suggestions(
+        current_user, event_ids
+    )
     return IPageResponse(
         page=result.page,
         total_items=result.total_items,
         total_pages=result.total_pages,
         results=[
-            EventRead.model_validate(e, from_attributes=True)
-            for e in result.results or []
+            EventRead.from_event(
+                event,
+                has_outfit_suggestions=event.id in with_suggestions,
+            )
+            for event in events
         ],
     )
 
 
-@router.get("/{event_id}", response_model=EventRead)
+@router.get("/{event_id}", response_model=EventDetailRead)
 async def get_event(
     event_id: int,
     service: EventServiceDep,
+    outfit_service: OutfitServiceDep,
     current_user: CurrentUserDep,
-) -> EventRead:
+) -> EventDetailRead:
     event = await service.get_for_user(current_user, event_id)
-    return EventRead.model_validate(event, from_attributes=True)
+    outfits = await outfit_service.list_for_event(current_user, event_id)
+    return EventDetailRead.from_event(
+        event,
+        outfit_suggestions=[outfit_to_read(outfit) for outfit in outfits],
+    )
 
 
 @router.patch("/{event_id}", response_model=EventRead)
@@ -76,31 +109,43 @@ async def update_event(
     event_id: int,
     data: EventUpdate,
     service: EventServiceDep,
+    outfit_service: OutfitServiceDep,
     current_user: CurrentUserDep,
 ) -> EventRead:
     event = await service.update(current_user, event_id, data)
-    return EventRead.model_validate(event, from_attributes=True)
+    has_suggestions = await outfit_service.has_for_event(current_user, event_id)
+    return EventRead.from_event(event, has_outfit_suggestions=has_suggestions)
 
 
 @router.delete("/{event_id}", response_model=EventRead)
 async def delete_event(
     event_id: int,
     service: EventServiceDep,
+    outfit_service: OutfitServiceDep,
     current_user: CurrentUserDep,
 ) -> EventRead:
+    has_suggestions = await outfit_service.has_for_event(current_user, event_id)
     event = await service.delete(current_user, event_id)
-    return EventRead.model_validate(event, from_attributes=True)
+    return EventRead.from_event(event, has_outfit_suggestions=has_suggestions)
 
 
-@router.post("/{event_id}/suggest-outfits")
+@router.post(
+    "/{event_id}/suggest-outfits",
+    response_model=JobRead,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def suggest_outfits(
     event_id: int,
     event_service: EventServiceDep,
-    dress_service: DressServiceDep,
-    outfit_service: OutfitServiceDep,
+    job_service: JobServiceDep,
     current_user: CurrentUserDep,
-):
-    event = await event_service.get_for_user(current_user, event_id)
-    return await outfit_service.suggest_for_event(
-        current_user, event, event_service, dress_service
+) -> JobRead:
+    await event_service.get_for_user(current_user, event_id)
+    job = await job_service.create(
+        current_user,
+        JobType.event_suggest_outfits,
+        {"event_id": event_id},
     )
+    celery_task_id = enqueue_job(job)
+    job = await job_service.set_celery_task_id(job, celery_task_id)
+    return job_to_read(job)

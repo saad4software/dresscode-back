@@ -1,7 +1,5 @@
 import json
 import logging
-from datetime import datetime, timezone
-from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,11 +12,12 @@ from src.ai.schemas import (
 from src.ai.tool_runner import run_with_tools
 from src.ai.tools import AVAILABLE_TOOLS, TOOL_DECLARATIONS
 from src.auth.models import User
-from src.dress.models import DressRead
 from src.dress.service import DressService
 from src.event.models import Event
 from src.event.season import season_for_date
 from src.event.service import EventService
+from src.outfit.models import OutfitRead
+from src.outfit.service import OutfitService, outfit_to_read
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,8 @@ class OutfitSuggestionService:
         event: Event,
         event_service: EventService,
         dress_service: DressService,
-    ) -> dict[str, Any]:
+        outfit_service: OutfitService,
+    ) -> list[OutfitRead]:
         season = season_for_date(event.event_date)
 
         dresses = await dress_service.list_for_outfit_suggestion(user, season)
@@ -119,35 +119,24 @@ class OutfitSuggestionService:
                 ),
             )
 
-        outfits_payload = []
-        for outfit in valid_outfits:
-            outfits_payload.append(
-                {
-                    "name": outfit.name,
-                    "color_harmony": outfit.color_harmony,
-                    "reasoning": outfit.reasoning,
-                    "pieces": [
-                        {
-                            "dress_id": piece.dress_id,
-                            "category": piece.category,
-                            "role": piece.role,
-                            "dress": DressRead.model_validate(
-                                dresses_by_id[piece.dress_id],
-                                from_attributes=True,
-                            ).model_dump(mode="json"),
-                        }
-                        for piece in outfit.pieces
-                    ],
-                }
+        await outfit_service.delete_for_event(user, event.id)
+
+        created: list[OutfitRead] = []
+        for suggestion in valid_outfits:
+            dress_ids = [piece.dress_id for piece in suggestion.pieces]
+            outfit = await outfit_service.create_from_suggestion(
+                user,
+                name=suggestion.name,
+                color_harmony=suggestion.color_harmony,
+                reasoning=suggestion.reasoning,
+                event_id=event.id,
+                dress_ids=dress_ids,
             )
+            created.append(outfit_to_read(outfit))
 
-        payload = {
-            "event_id": event.id,
-            "season": season.value,
-            "weather_summary": result.weather_summary,
-            "outfits": outfits_payload,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-        }
-
-        await event_service.save_outfit_suggestions(event, payload)
-        return payload
+        await event_service.persist_season_weather(
+            event,
+            season=season.value,
+            weather_summary=result.weather_summary,
+        )
+        return created

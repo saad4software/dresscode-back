@@ -50,6 +50,16 @@ class Config(BaseSettings):
         os.getenv("AI_AUTO_ANALYZE_ON_UPLOAD", "true").lower() == "true"
     )
 
+    redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    celery_broker_url: str = os.getenv(
+        "CELERY_BROKER_URL", os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    )
+    celery_result_backend: str = os.getenv(
+        "CELERY_RESULT_BACKEND", os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    )
+    fcm_credentials_path: str | None = os.getenv("FCM_CREDENTIALS_PATH")
+    fcm_enabled: bool = os.getenv("FCM_ENABLED", "false").lower() == "true"
+
     @property
     def db_url(self):
         return f"sqlite+aiosqlite:///./{self.db_name}"

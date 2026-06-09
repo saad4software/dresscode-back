@@ -11,11 +11,11 @@ def get_ai_service(session: SessionDep) -> AIService:
     return AIService(session)
 
 
-def get_outfit_service(session: SessionDep) -> OutfitSuggestionService:
+def get_outfit_suggestion_service(session: SessionDep) -> OutfitSuggestionService:
     return OutfitSuggestionService(session)
 
 
 AIServiceDep = Annotated[AIService, Depends(get_ai_service)]
-OutfitServiceDep = Annotated[
-    OutfitSuggestionService, Depends(get_outfit_service)
+OutfitSuggestionServiceDep = Annotated[
+    OutfitSuggestionService, Depends(get_outfit_suggestion_service)
 ]

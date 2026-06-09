@@ -3,8 +3,11 @@ from functools import lru_cache
 
 from fastapi import HTTPException, status
 
-from src.ai.prompts import DRESS_VISION_PROMPT
-from src.ai.schemas import DressVisionMultiResult
+import json
+
+from src.ai.prompts import DRESS_VISION_PROMPT, OUTFIT_DESCRIPTION_PROMPT
+from src.ai.schemas import DressCatalogItem, DressVisionMultiResult, OutfitDescriptionResult
+from src.dress.models import Dress
 from src.core.config import config
 
 logger = logging.getLogger(__name__)
@@ -56,3 +59,42 @@ async def analyze_image(
     except ValueError as exc:
         logger.error("Model returned invalid JSON: %s", text[:500])
         raise ValueError(f"Model returned invalid JSON: {exc}") from exc
+
+
+async def describe_outfit(pieces: list[Dress]) -> OutfitDescriptionResult:
+    """Generate outfit metadata from a set of wardrobe pieces."""
+    client = _get_client()
+
+    from google.genai import types
+
+    catalog = [DressCatalogItem.from_dress(d) for d in pieces]
+    user_prompt = (
+        f"{OUTFIT_DESCRIPTION_PROMPT}\n\n"
+        f"Pieces ({len(catalog)} items):\n"
+        f"{json.dumps([c.model_dump(mode='json') for c in catalog], indent=2)}"
+    )
+
+    response = await client.aio.models.generate_content(
+        model=config.gemma_model_id,
+        contents=[user_prompt],
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=OutfitDescriptionResult,
+        ),
+    )
+
+    text = (response.text or "").replace("`", "")
+    if not text:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI returned an empty outfit description response",
+        )
+
+    try:
+        return OutfitDescriptionResult.model_validate_json(text)
+    except ValueError as exc:
+        logger.error("Outfit description invalid JSON: %s", text[:500])
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"AI returned invalid outfit description JSON: {exc}",
+        ) from exc

@@ -13,6 +13,10 @@ from src.dress.models import Dress
 from src.event.models import Event
 from src.media.models import Media
 from src.admin.models import City, EventType, DressCategory
+from src.profile.models import PersonalStyle, Profile, ProfilePersonalStyleLink
+from src.outfit.models import Outfit, OutfitDressLink
+from src.jobs.models import Job
+from src.notifications.models import DeviceToken, Notification
 
 
 # this is the Alembic Config object, which provides

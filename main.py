@@ -10,6 +10,10 @@ from src.dress.router import router as dress_router
 from src.event.router import router as event_router
 from src.media.router import router as media_router
 from src.admin.router import router as admin_router
+from src.profile.router import router as profile_router
+from src.outfit.router import router as outfit_router
+from src.jobs.router import router as jobs_router
+from src.notifications.router import router as notifications_router
 
 setup_logging()
 
@@ -25,6 +29,10 @@ app.include_router(dress_router)
 app.include_router(event_router)
 app.include_router(media_router)
 app.include_router(admin_router)
+app.include_router(profile_router)
+app.include_router(outfit_router)
+app.include_router(jobs_router)
+app.include_router(notifications_router)
 
 
 

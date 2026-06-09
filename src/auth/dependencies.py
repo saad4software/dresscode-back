@@ -3,13 +3,12 @@ from typing import Annotated
 from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 
-from src.auth.constants import OAUTH_TOKEN_URL
 from src.auth.models import User
 from src.auth.service import AuthService
 from src.core.dependencies import SessionDep
 
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl=OAUTH_TOKEN_URL)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login_swagger")
 
 
 def get_auth_service(session: SessionDep) -> AuthService:

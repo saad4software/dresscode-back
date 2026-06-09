@@ -211,6 +211,20 @@ class OutfitSuggestion(BaseModel):
     )
 
 
+class OutfitDescriptionResult(BaseModel):
+    name: str = Field(description="Short label for the outfit")
+    color_harmony: str = Field(
+        description=(
+            "Brief explanation of how the colors of the pieces work together "
+            "(complementary, analogous, neutral anchor, etc.)"
+        )
+    )
+    reasoning: Optional[str] = Field(
+        default=None,
+        description="Why these pieces work together as a cohesive outfit.",
+    )
+
+
 class OutfitSuggestionsResult(BaseModel):
     outfits: list[OutfitSuggestion] = Field(
         description="Provide at least 2 distinct complete outfits."

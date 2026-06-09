@@ -1,10 +1,10 @@
 from datetime import date, datetime, time, timezone
-from typing import Any, Optional
+from typing import Optional
 
-from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel, Relationship
 
 from src.admin.models import City, EventType
+from src.outfit.models import OutfitRead
 
 
 class Event(SQLModel, table=True):
@@ -22,10 +22,8 @@ class Event(SQLModel, table=True):
     city_id: int = Field(foreign_key="city.id")
     event_type_id: int = Field(foreign_key="event_type.id")
 
-    outfit_suggestions: Optional[dict[str, Any]] = Field(
-        default=None, sa_column=Column(JSON, nullable=True)
-    )
-    outfits_generated_at: Optional[datetime] = None
+    weather_summary: Optional[str] = None
+    season: Optional[str] = None
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -75,13 +73,54 @@ class EventRead(SQLModel):
     city: str
     city_id: int
     notes: Optional[str]
-    outfit_suggestions: Optional[dict[str, Any]]
-    outfits_generated_at: Optional[datetime]
+    weather_summary: Optional[str]
+    season: Optional[str]
+    has_outfit_suggestions: bool = False
     created_at: datetime
     updated_at: datetime
+
+    @classmethod
+    def from_event(
+        cls, event: "Event", *, has_outfit_suggestions: bool = False
+    ) -> "EventRead":
+        return cls(
+            id=event.id,
+            user_id=event.user_id,
+            title=event.title,
+            event_type=event.event_type,
+            event_type_id=event.event_type_id,
+            event_date=event.event_date,
+            start_time=event.start_time,
+            end_time=event.end_time,
+            city=event.city,
+            city_id=event.city_id,
+            notes=event.notes,
+            weather_summary=event.weather_summary,
+            season=event.season,
+            has_outfit_suggestions=has_outfit_suggestions,
+            created_at=event.created_at,
+            updated_at=event.updated_at,
+        )
+
+
+class EventDetailRead(EventRead):
+    outfit_suggestions: list[OutfitRead] = []
+
+    @classmethod
+    def from_event(
+        cls,
+        event: "Event",
+        outfit_suggestions: list[OutfitRead],
+    ) -> "EventDetailRead":
+        return cls(
+            **EventRead.from_event(
+                event,
+                has_outfit_suggestions=bool(outfit_suggestions),
+            ).model_dump(),
+            outfit_suggestions=outfit_suggestions,
+        )
 
 
 class CityOption(SQLModel):
     slug: str
     display_name: str
-

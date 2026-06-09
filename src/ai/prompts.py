@@ -33,3 +33,12 @@ Workflow:
 
 Return ONLY the structured JSON matching the response schema. Use the exact dress `id` values from the catalog.
 """
+
+OUTFIT_DESCRIPTION_PROMPT = """You are a personal stylist. Given a set of clothing pieces detected from one or more photos, write a cohesive outfit description.
+
+Provide:
+1. `name` — a short, memorable label for the outfit (e.g. "Casual Weekend Layers").
+2. `color_harmony` — how the piece colors work together (complementary, analogous, monochromatic, neutral anchor, etc.).
+3. `reasoning` — one or two sentences on why these pieces form a complete, wearable outfit.
+
+Return ONLY the structured JSON matching the response schema."""

@@ -3,6 +3,7 @@ import logging
 from sqlmodel import select
 from src.core.dependencies import SessionLocal
 from src.admin.models import City, EventType, DressCategory
+from src.profile.models import PersonalStyle
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,69 @@ DRESS_CATEGORY_SEEDS = [
     {"slug": "other", "display_name": "Other"},
 ]
 
+PERSONAL_STYLE_SEEDS = [
+    {
+        "slug": "classic",
+        "display_name": "Classic",
+        "description": "Timeless, tailored pieces and neutral palettes.",
+    },
+    {
+        "slug": "minimalist",
+        "display_name": "Minimalist",
+        "description": "Clean lines, muted colors, and low visual noise.",
+    },
+    {
+        "slug": "bold",
+        "display_name": "Bold",
+        "description": "Strong colors, contrast, and statement pieces.",
+    },
+    {
+        "slug": "elegant",
+        "display_name": "Elegant",
+        "description": "Polished, refined, and understated luxury.",
+    },
+    {
+        "slug": "casual",
+        "display_name": "Casual",
+        "description": "Relaxed, comfortable, everyday ease.",
+    },
+    {
+        "slug": "streetwear",
+        "display_name": "Streetwear",
+        "description": "Urban influence with sneakers, hoodies, and layered looks.",
+    },
+    {
+        "slug": "preppy",
+        "display_name": "Preppy",
+        "description": "Collegiate, crisp tailoring, stripes, and loafers.",
+    },
+    {
+        "slug": "bohemian",
+        "display_name": "Bohemian",
+        "description": "Flowy silhouettes, earthy tones, and artistic layering.",
+    },
+    {
+        "slug": "romantic",
+        "display_name": "Romantic",
+        "description": "Soft details, delicate fabrics, and gentle palettes.",
+    },
+    {
+        "slug": "edgy",
+        "display_name": "Edgy",
+        "description": "Dark tones, leather, asymmetry, and rock-inspired edge.",
+    },
+    {
+        "slug": "sporty",
+        "display_name": "Sporty",
+        "description": "Athleisure and activewear blended into daily outfits.",
+    },
+    {
+        "slug": "vintage",
+        "display_name": "Vintage",
+        "description": "Retro eras, nostalgic silhouettes, and thrift aesthetic.",
+    },
+]
+
 
 async def seed_data():
     logging.basicConfig(level=logging.INFO)
@@ -81,6 +145,15 @@ async def seed_data():
                 logger.info(f"Seeding dress category: {dc_data['slug']}")
                 dc = DressCategory(**dc_data)
                 session.add(dc)
+
+        # Seed PersonalStyles
+        for style_data in PERSONAL_STYLE_SEEDS:
+            stmt = select(PersonalStyle).where(PersonalStyle.slug == style_data["slug"])
+            res = await session.execute(stmt)
+            if not res.scalar_one_or_none():
+                logger.info(f"Seeding personal style: {style_data['slug']}")
+                style = PersonalStyle(**style_data)
+                session.add(style)
 
         await session.commit()
     logger.info("Database seeding completed.")

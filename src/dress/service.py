@@ -70,7 +70,23 @@ class DressService:
     ) -> tuple[list[Dress], int]:
         """Upload an image, analyze it with Gemma, and create one dress per garment."""
         media = await media_service.upload(user, file)
-        media_id = media.id
+        return await self.analyze_from_image(user.id, media.id, media_service)
+
+    async def analyze_from_image(
+        self,
+        user_id: int,
+        media_id: int,
+        media_service: MediaService,
+    ) -> tuple[list[Dress], int]:
+        """Analyze a previously uploaded image and create one dress per garment."""
+        user = await self.session.get(User, user_id)
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+
+        media = await media_service.get_for_user(user, media_id)
         storage_path = media.storage_path
         mime_type = media.mime_type
 
@@ -123,7 +139,6 @@ class DressService:
             dresses.append(dress)
 
         await self.session.commit()
-        # Eagerly load categories for returned dresses
         dresses_loaded = []
         for d in dresses:
             stmt = select(Dress).where(Dress.id == d.id).options(

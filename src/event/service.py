@@ -202,21 +202,23 @@ class EventService:
         await self.session.commit()
         return event
 
-    async def save_outfit_suggestions(
-        self, event: Event, payload: dict
+    async def persist_season_weather(
+        self,
+        event: Event,
+        *,
+        season: str,
+        weather_summary: Optional[str],
     ) -> Event:
-        event.outfit_suggestions = payload
-        event.outfits_generated_at = datetime.now(timezone.utc)
-        event.updated_at = event.outfits_generated_at
+        event.season = season
+        event.weather_summary = weather_summary
+        event.updated_at = datetime.now(timezone.utc)
         self.session.add(event)
         await self.session.commit()
 
-        # Eagerly load relationship objects after update
         stmt = select(Event).where(Event.id == event.id).options(
             selectinload(Event.city_obj),
-            selectinload(Event.event_type_obj)
+            selectinload(Event.event_type_obj),
         )
         res = await self.session.execute(stmt)
-        event = res.scalar_one()
-        return event
+        return res.scalar_one()
 
